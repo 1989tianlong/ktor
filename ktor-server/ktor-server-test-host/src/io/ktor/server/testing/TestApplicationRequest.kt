@@ -41,7 +41,9 @@ class TestApplicationRequest(
     }
 
     var bodyChannel: ByteReadChannel? = null
+
     var bodyBytes: ByteArray = ByteArray(0)
+
     var body: String
         get() = bodyBytes.toString(Charsets.UTF_8)
         set(newValue) {
@@ -53,6 +55,7 @@ class TestApplicationRequest(
     override val queryParameters by lazy(LazyThreadSafetyMode.NONE) { parseQueryString(queryString()) }
 
     private var headersMap: MutableMap<String, MutableList<String>>? = hashMapOf()
+
     fun addHeader(name: String, value: String) {
         val map = headersMap ?: throw Exception("Headers were already acquired for this request")
         map.getOrPut(name, { arrayListOf() }).add(value)
@@ -70,10 +73,9 @@ class TestApplicationRequest(
 
     override val cookies = RequestCookies(this)
 
-    override fun receiveContent() = TestIncomingContent(this)
-    override fun receiveChannel(): ByteReadChannel {
-        return bodyChannel ?: ByteReadChannel(bodyBytes)
-    }
+    override fun receiveContent(): IncomingContent = TestIncomingContent(this)
+
+    override fun receiveChannel(): ByteReadChannel = bodyChannel ?: ByteReadChannel(bodyBytes)
 
     class TestIncomingContent(private val request: TestApplicationRequest) : IncomingContent {
         override val headers: Headers = request.headers

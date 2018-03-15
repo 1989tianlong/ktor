@@ -102,7 +102,7 @@ class TestEngineMultipartTest {
             }
 
             assertFailsWith<AssertionError> {
-                handleRequest(HttpMethod.Post, "/").awaitCompletion()
+                handleRequest(HttpMethod.Post, "/")
             }
         }
     }

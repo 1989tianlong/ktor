@@ -11,11 +11,15 @@ import kotlinx.coroutines.experimental.*
 import kotlinx.coroutines.experimental.channels.*
 import kotlinx.coroutines.experimental.io.*
 import java.util.concurrent.*
+import kotlin.coroutines.experimental.*
 
-class TestApplicationEngine(environment: ApplicationEngineEnvironment = createTestEnvironment(), configure: Configuration.() -> Unit = {}) : BaseApplicationEngine(environment, EnginePipeline()) {
+class TestApplicationEngine(
+        environment: ApplicationEngineEnvironment = createTestEnvironment(),
+        configure: Configuration.() -> Unit = {}
+) : BaseApplicationEngine(environment, EnginePipeline()) {
 
     class Configuration : BaseApplicationEngine.Configuration() {
-        var dispatcher: CoroutineDispatcher = Unconfined
+        var dispatcher: CoroutineContext = EmptyCoroutineContext
     }
 
     private val configuration = Configuration().apply(configure)
@@ -36,9 +40,8 @@ class TestApplicationEngine(environment: ApplicationEngineEnvironment = createTe
         environment.stop()
     }
 
-    fun handleRequest(setup: TestApplicationRequest.() -> Unit): TestApplicationCall {
-        return createCall(setup).apply { execute(this) }
-    }
+    fun handleRequest(setup: TestApplicationRequest.() -> Unit): TestApplicationCall =
+            createCall(setup).also { executeCall(it) }
 
     fun handleWebSocket(uri: String, setup: TestApplicationRequest.() -> Unit): TestApplicationCall = createCall {
         this.uri = uri
@@ -47,11 +50,11 @@ class TestApplicationEngine(environment: ApplicationEngineEnvironment = createTe
         addHeader(HttpHeaders.SecWebSocketKey, encodeBase64("test".toByteArray()))
 
         setup()
-    }.apply { execute(this) }
+    }.also { executeCall(it) }
 
     fun handleWebSocketConversation(
-        uri: String, setup: TestApplicationRequest.() -> Unit = {},
-        callback: suspend TestApplicationCall.(incoming: ReceiveChannel<Frame>, outgoing: SendChannel<Frame>) -> Unit
+            uri: String, setup: TestApplicationRequest.() -> Unit = {},
+            callback: suspend TestApplicationCall.(incoming: ReceiveChannel<Frame>, outgoing: SendChannel<Frame>) -> Unit
     ): TestApplicationCall {
         val bc = ByteChannel(true)
         val call = handleWebSocket(uri) {
@@ -63,7 +66,9 @@ class TestApplicationEngine(environment: ApplicationEngineEnvironment = createTe
         val engineContext = Unconfined
         val job = Job()
         val writer = @Suppress("DEPRECATION") WebSocketWriter(bc, job, engineContext, pool)
-        val reader = @Suppress("DEPRECATION") WebSocketReader(call.response.contentChannel()!!, { Int.MAX_VALUE.toLong() }, job, engineContext, pool)
+        val reader = @Suppress("DEPRECATION") WebSocketReader(
+                call.response.contentChannel()!!, { Int.MAX_VALUE.toLong() }, job, engineContext, pool
+        )
 
         runBlocking {
             call.callback(reader.incoming, writer.outgoing)
@@ -74,19 +79,13 @@ class TestApplicationEngine(environment: ApplicationEngineEnvironment = createTe
         return call
     }
 
-    fun createCall(setup: TestApplicationRequest.() -> Unit): TestApplicationCall {
-        return TestApplicationCall(application).apply {
-            setup(request)
-        }
-    }
+    fun createCall(setup: TestApplicationRequest.() -> Unit): TestApplicationCall =
+            TestApplicationCall(application).apply { setup(request) }
 
-    private fun execute(call: TestApplicationCall) = launch(configuration.dispatcher) {
-        try {
-            pipeline.execute(call)
-        } catch (t: Throwable) {
-            call.response.complete(t)
-        } finally {
-            call.response.complete()
-        }
+    fun executeCall(call: TestApplicationCall): Unit = runBlocking(configuration.dispatcher) {
+        pipeline.execute(call)
+        call.response.responseReader?.join()
+
+        Unit
     }
 }
