@@ -35,12 +35,6 @@ class bye(val value: String)
 @Location("entity/{id}")
 class entity(val id: EntityID)
 
-@Location("/items/{itemId}/{extra?}")
-class OverlappingPath1(val itemId: Int, val extra: String?)
-
-@Location("/items/{extra}")
-class OverlappingPath2(val extra: String)
-
 data class EntityID(val typeId: Int, val entityId: Int)
 
 class CustomLocationsTest {
@@ -104,20 +98,4 @@ class CustomLocationsTest {
         urlShouldBeHandled(href)
         urlShouldBeUnhandled("/")
     }
-
-    @Test
-    fun `overlapping paths are resolved as expected`() = withLocationsApplication {
-        application.install(CallLogging)
-        application.routing {
-            get<OverlappingPath1> {
-                call.respond(HttpStatusCode.OK)
-            }
-            get<OverlappingPath2> {
-                call.respond(HttpStatusCode.OK)
-            }
-        }
-        urlShouldBeHandled(application.locations.href(OverlappingPath1(1, "Foo")))
-        urlShouldBeHandled(application.locations.href(OverlappingPath2("1-Foo")))
-    }
-
 }
