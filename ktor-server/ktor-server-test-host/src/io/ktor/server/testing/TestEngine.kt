@@ -13,12 +13,14 @@ fun createTestEnvironment(configure: ApplicationEngineEnvironmentBuilder.() -> U
     configure()
 }
 
-fun TestApplicationEngine.handleRequest(method: HttpMethod, uri: String, setup: TestApplicationRequest.() -> Unit = {}): TestApplicationCall {
-    return handleRequest {
-        this.uri = uri
-        this.method = method
-        setup()
-    }
+fun TestApplicationEngine.handleRequest(
+        method: HttpMethod,
+        uri: String,
+        setup: TestApplicationRequest.() -> Unit = {}
+): TestApplicationCall = handleRequest {
+    this.uri = uri
+    this.method = method
+    setup()
 }
 
 fun <R> withApplication(

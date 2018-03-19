@@ -3,7 +3,6 @@ package io.ktor.server.testing
 import io.ktor.cio.*
 import io.ktor.content.*
 import io.ktor.http.*
-import io.ktor.network.util.*
 import io.ktor.request.*
 import io.ktor.response.*
 import io.ktor.server.engine.*
@@ -13,9 +12,6 @@ import java.time.*
 import java.util.concurrent.*
 
 class TestApplicationResponse(call: TestApplicationCall) : BaseApplicationResponse(call) {
-    @Volatile
-    internal var responseReader: ReaderJob? = null
-
     val content: String?
         get() {
             val charset = headers[HttpHeaders.ContentType]?.let { ContentType.parse(it).charset() } ?: Charsets.UTF_8
@@ -23,7 +19,17 @@ class TestApplicationResponse(call: TestApplicationCall) : BaseApplicationRespon
         }
 
     var byteContent: ByteArray? = null
+        get() = when {
+            field != null -> field
+            responseChannel == null -> null
+            else -> runBlocking { responseChannel!!.toByteArray() }
+        }
         private set
+
+    var flushTask: CancellableContinuation<Unit>? = null
+
+    @Volatile
+    private var responseChannel: ByteChannel? = null
 
     override fun setStatus(statusCode: HttpStatusCode) {}
 
@@ -47,21 +53,21 @@ class TestApplicationResponse(call: TestApplicationCall) : BaseApplicationRespon
     }
 
     override suspend fun responseChannel(): ByteWriteChannel {
-        responseReader = reader(ioCoroutineDispatcher) {
-            val length = headers[HttpHeaders.ContentLength]?.let { contentLengthString ->
-                val contentLength = contentLengthString.toLong()
-                if (contentLength >= Int.MAX_VALUE) throw error("Content length is too big for test engine")
-
-                contentLength.toInt()
-            }
-
-            byteContent = channel.toByteArray(sizeHint = length ?: 0)
+        if (responseChannel == null) {
+            responseChannel = ByteChannel(autoFlush = true)
+            flushTask?.resume(Unit)
         }
 
-        return responseReader!!.channel
+        return responseChannel!!
     }
 
-    fun contentChannel(): ByteReadChannel? = byteContent?.let { ByteReadChannel(it) }
+    fun contentChannel(): ByteReadChannel? = responseChannel
+
+    suspend fun flush() {
+        suspendCancellableCoroutine<Unit> { flushTask = it }
+
+        byteContent = responseChannel?.toByteArray()
+    }
 
     // Websockets & upgrade
     private val webSocketCompleted: CompletableDeferred<Unit> = CompletableDeferred()
