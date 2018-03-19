@@ -56,16 +56,16 @@ class TestApplicationEngine(
             uri: String, setup: TestApplicationRequest.() -> Unit = {},
             callback: suspend TestApplicationCall.(incoming: ReceiveChannel<Frame>, outgoing: SendChannel<Frame>) -> Unit
     ): TestApplicationCall {
-        val bc = ByteChannel(true)
+        val websocketChannel = ByteChannel(true)
         val call = handleWebSocket(uri) {
             setup()
-            this.bodyChannel = bc
+            body = websocketChannel
         }
 
         val pool = KtorDefaultPool
         val engineContext = Unconfined
         val job = Job()
-        val writer = @Suppress("DEPRECATION") WebSocketWriter(bc, job, engineContext, pool)
+        val writer = @Suppress("DEPRECATION") WebSocketWriter(websocketChannel, job, engineContext, pool)
         val reader = @Suppress("DEPRECATION") WebSocketReader(
                 call.response.contentChannel()!!, { Int.MAX_VALUE.toLong() }, job, engineContext, pool
         )
